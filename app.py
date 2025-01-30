@@ -1,8 +1,9 @@
 import os
 from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime, timedelta
-from sqlalchemy import create_engine, desc
+from flask_migrate import Migrate
+from datetime import datetime
+from sqlalchemy import create_engine
 from sqlalchemy_utils import database_exists, create_database
 
 app = Flask(__name__)
@@ -17,7 +18,6 @@ if database_url:
 else:
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///garden.db'
 
-# Database optimization settings
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_size': 20,
@@ -27,7 +27,9 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 }
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
+# Database Models
 class SensorReadings(db.Model):
     __tablename__ = 'sensor_readings'
     id = db.Column(db.Integer, primary_key=True)
@@ -38,13 +40,6 @@ class SensorReadings(db.Model):
     water_flow = db.Column(db.Float, nullable=False)
     valve_state = db.Column(db.Boolean, default=False, nullable=False)
 
-    @staticmethod
-    def cleanup_old_readings():
-        """Delete readings older than 24 hours"""
-        cutoff = datetime.utcnow() - timedelta(hours=24)
-        SensorReadings.query.filter(SensorReadings.timestamp < cutoff).delete()
-        db.session.commit()
-
 class Settings(db.Model):
     __tablename__ = 'settings'
     id = db.Column(db.Integer, primary_key=True)
@@ -53,7 +48,7 @@ class Settings(db.Model):
     timer_enabled = db.Column(db.Boolean, default=False, nullable=False)
     timer_hour = db.Column(db.Integer, default=0, nullable=False)
     timer_minute = db.Column(db.Integer, default=0, nullable=False)
-    last_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_updated = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Commands(db.Model):
     __tablename__ = 'commands'
@@ -62,8 +57,7 @@ class Commands(db.Model):
     duration = db.Column(db.Integer, nullable=False)
     executed = db.Column(db.Boolean, default=False, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
-    command_type = db.Column(db.String(20), default='manual')  # manual, timer, or moisture
-
+    command_type = db.Column(db.String(20), default='manual')
 def init_database():
     try:
         engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
