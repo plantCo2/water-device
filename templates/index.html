@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garden Control System</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        /* Global Styles */
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f9fb;
+            color: #333;
+        }
+
+        h1, h2 {
+            color: #4CAF50;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 30px;
+            background: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .card {
+            background: #f0f0f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .gauge {
+            width: 250px;
+            height: 250px;
+            display: inline-block;
+            margin-right: 20px;
+        }
+
+        button {
+            padding: 12px 25px;
+            margin: 10px 0;
+            border-radius: 30px;
+            border: none;
+            background: #4CAF50;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #45a049;
+            transform: scale(1.05);
+        }
+
+        input[type="number"], input[type="time"], label {
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 16px;
+            border: 2px solid #ccc;
+            border-radius: 6px;
+            width: 100%;
+        }
+
+        input[type="number"]:focus, input[type="time"]:focus {
+            border-color: #4CAF50;
+            outline: none;
+        }
+
+        label {
+            font-weight: 500;
+        }
+
+        .settings-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .settings-group > div {
+            margin-bottom: 15px;
+        }
+
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+        }
+
+        .checkbox-container input {
+            margin-right: 10px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            .gauge {
+                width: 180px;
+                height: 180px;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GREEN TECH IOT </h1>
+        
+        <div class="card">
+            <h2>Current Readings</h2>
+            <div class="gauge" id="moistureGauge"></div>
+            <div class="gauge" id="temperatureGauge"></div>
+            <div class="gauge" id="humidityGauge"></div>
+            <p><strong>Last Water Flow:</strong> <span id="waterflow">--</span> ml</p>
+            <p><strong>Last Updated:</strong> <span id="lastUpdate">--</span></p>
+        </div>
+        
+        <div class="card">
+            <h2>System Settings</h2>
+            <div class="settings-group">
+                <div>
+                    <label for="moistureThreshold">Moisture Threshold (0-1000):</label>
+                    <input type="number" id="moistureThreshold" min="0" max="1000">
+                </div>
+                <div>
+                    <label for="wateringDuration">Watering Duration (seconds):</label>
+                    <input type="number" id="wateringDuration" min="1" max="300">
+                </div>
+                <div>
+                    <label for="timerTime">Timer:</label>
+                    <input type="time" id="timerTime">
+                </div>
+                <div class="checkbox-container">
+                    <input type="checkbox" id="timerEnabled"> <label for="timerEnabled">Enable Timer</label>
+                </div>
+                <button onclick="saveSettings()">Save Settings</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Manual Control</h2>
+            <div class="settings-group">
+                <button onclick="controlValve(true)">Turn On Valve</button>
+                <button onclick="controlValve(false)">Turn Off Valve</button>
+                <input type="number" id="manualDuration" placeholder="Duration (seconds)">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function createGauge(elementId, title, min, max) {
+            var data = [{
+                type: "indicator",
+                mode: "gauge+number",
+                value: 0,
+                title: { text: title },
+                gauge: { axis: { range: [min, max] }, bar: { color: "#4CAF50" } }
+            }];
+            var layout = { width: 250, height: 250, margin: { t: 25, b: 25, l: 25, r: 25 } };
+            Plotly.newPlot(elementId, data, layout);
+        }
+
+        function updateGauge(elementId, value) {
+            Plotly.update(elementId, { 'value': [value] });
+        }
+
+        function updateReadings() {
+            fetch('/api/readings')
+                .then(response => response.json())
+                .then(data => {
+                    updateGauge('moistureGauge', data.soil_moisture);
+                    updateGauge('temperatureGauge', data.temperature);
+                    updateGauge('humidityGauge', data.humidity);
+                    document.getElementById('waterflow').textContent = data.water_flow.toFixed(2);
+                    document.getElementById('lastUpdate').textContent = new Date(data.timestamp).toLocaleString();
+                });
+        }
+
+        function saveSettings() {
+            const threshold = document.getElementById('moistureThreshold').value;
+            const duration = document.getElementById('wateringDuration').value;
+            const timerTime = document.getElementById('timerTime').value;
+            const [timerHour, timerMinute] = timerTime.split(':').map(Number);
+            const timerEnabled = document.getElementById('timerEnabled').checked;
+            
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    threshold: parseInt(threshold),
+                    watering_duration: parseInt(duration),
+                    timer_enabled: timerEnabled,
+                    timer_hour: timerHour,
+                    timer_minute: timerMinute
+                })
+            }).then(response => response.json())
+              .then(data => alert('Settings saved successfully'));
+        }
+
+        function controlValve(state) {
+            const duration = document.getElementById('manualDuration').value;
+            fetch('/api/valve/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ state: state, duration: parseInt(duration) || 0 })
+            }).then(response => response.json())
+              .then(data => alert('Valve command sent'));
+        }
+
+        // Initialize gauges
+        createGauge('moistureGauge', 'Soil Moisture', 0, 1000);
+        createGauge('temperatureGauge', 'Temperature °C', 0, 50);
+        createGauge('humidityGauge', 'Humidity %', 0, 100);
+
+        // Update readings every 30 seconds
+        setInterval(updateReadings, 30000);
+        updateReadings();
+
+        // Load initial settings
+        fetch('/api/settings')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('moistureThreshold').value = data.threshold;
+                document.getElementById('wateringDuration').value = data.watering_duration;
+                document.getElementById('timerEnabled').checked = data.timer_enabled;
+                const timerTime = `${data.timer_hour.toString().padStart(2, '0')}:${data.timer_minute.toString().padStart(2, '0')}`;
+                document.getElementById('timerTime').value = timerTime;
+            });
+    </script>
+</body>
+</html>
